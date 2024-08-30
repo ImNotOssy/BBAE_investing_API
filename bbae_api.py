@@ -2,10 +2,8 @@ import os
 import requests
 import uuid
 from time import time
-from dotenv import load_dotenv
 from io import BytesIO
 from PIL import Image
-import base64
 
 class BBAEAPI:
     def __init__(self, user, password, creds_path="./creds/"):
