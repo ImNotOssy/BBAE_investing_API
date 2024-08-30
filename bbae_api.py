@@ -2,11 +2,9 @@ import os
 import requests
 import uuid
 from time import time
-from dotenv import load_dotenv
 from io import BytesIO
 from PIL import Image, UnidentifiedImageError
 from io import BytesIO
-import base64
 
 class BBAEAPI:
     def __init__(self, user, password, creds_path="./creds/"):
@@ -16,12 +14,14 @@ class BBAEAPI:
         self.cookies = self.load_cookies()
         print(f"BBAEAPI Initialized for {self.user}")
 
+
     def current_epoch_time_as_hex(self):
         epoch_time = str("%.18f" % time())
         split = epoch_time.split(".")
         hex1 = hex(int(split[0]))[2:]
         hex2 = hex(int(split[1]))[2:]
         return f"{hex1}+{hex2}"
+
 
     def save_cookies(self, cookies):
         filename = os.path.join(self.creds_path, f"BBAE_{self.user[:5]}.txt")
@@ -30,6 +30,7 @@ class BBAEAPI:
             for key, value in cookies.items():
                 file.write(f"{key}={value}\n")
         print("Cookies saved successfully.")
+
 
     def load_cookies(self):
         cookies = {}
@@ -45,6 +46,7 @@ class BBAEAPI:
             print(f"No cookies found at {filename}, starting fresh.")
         return cookies
 
+
     def make_initial_request(self):
         hex_time = self.current_epoch_time_as_hex()
         url = f'https://api.bbaepro.com/api/v2/system/inform?guest=1&_v=6.6.0&_s={hex_time}'
@@ -58,63 +60,28 @@ class BBAEAPI:
         self.cookies.update(response.cookies.get_dict())
         self.save_cookies(self.cookies)
         print(f"Initial request complete with status code {response.status_code}")
+        return response.json()
 
-    def generate_login_ticket(self, sms_code=None, captcha_input=None):
+
+    def generate_login_ticket_sms(self):
         hex_time = self.current_epoch_time_as_hex()
-        is_phone_login = self.user.isdigit()
         url = f'https://api.bbaepro.com/api/v2/multipleFactors/authentication/generateLoginTicket?guest=1&_v=6.6.0&_s={hex_time}'
         headers = {
             'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; sdk_gphone64_x86_64 Build/SE1A.211212.001.B1)',
-            'Tz': '-360',
-            'Tzname': 'America/Chicago',
             'Content-Type': 'application/json; charset=UTF-8',
-            'Accept-Language': 'en',
-            'Accept-Encoding': 'gzip, deflate, br'
+            'Cookie': "; ".join([f"{key}={value}" for key, value in self.cookies.items()])
         }
         data = {
             "password": self.password,
-            "type": "MOBILE" if is_phone_login else "EMAIL",
-            "userName": self.user
-        }
-
-        if is_phone_login:
-            data["areaCodeId"] = "5"
-
-        if captcha_input:
-            data["captchaInputText"] = captcha_input
-
-        if sms_code:
-            data["smsInputText"] = sms_code
-        
-        print(f"Generating login ticket for {self.user}")
-        response = requests.post(url, headers=headers, json=data, cookies=self.cookies)
-        response_data = response.json()
-        print(f"Login ticket response: {response_data}")
-        return response_data
-
-    def request_sms_code(self, captcha_input=None):
-        hex_time = self.current_epoch_time_as_hex()
-        url = f'https://api.bbaepro.com/api/v2/tools/nonLogin/sms?guest=1&_v=6.6.0&_s={hex_time}'
-        headers = {
-            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; sdk_gphone64_x86_64 Build/SE1A.211212.001.B1)',
-            'Tz': '-360',
-            'Tzname': 'America/Chicago',
-            'Content-Type': 'application/json; charset=UTF-8',
-            'Accept-Language': 'en',
-            'Accept-Encoding': 'gzip, deflate, br'
-        }
-        data = {
-            "mobile": self.user,
             "type": "MOBILE",
-            "updateType": "MOBILE",
-            "verifyType": "LOGIN",
-            "captchaInputText": captcha_input
+            "userName": self.user,
+            "areaCodeId": "5"
         }
-
-        print("Requesting SMS code...")
-        response = requests.post(url, headers=headers, json=data, cookies=self.cookies)
-        print(f"SMS code request response: {response.json()}")
+        print(f"Requesting SMS login ticket for {self.user}")
+        response = requests.post(url, headers=headers, json=data)
+        print(f"Response from login ticket request: {response.json()}")
         return response.json()
+
 
     def request_captcha(self):
         hex_time = self.current_epoch_time_as_hex()
@@ -126,47 +93,55 @@ class BBAEAPI:
         }
         print("Requesting captcha image...")
         response = requests.get(url, headers=headers, cookies=self.cookies)
-        print(f"CAPTCHA response status: {response.status_code}")
-        print(f"CAPTCHA response headers: {response.headers}")
-
         if response.status_code == 200 and 'image' in response.headers['Content-Type']:
             try:
-                # Handle GIF images specifically
-                if response.headers['Content-Type'] == 'image/gif':
-                    image = Image.open(BytesIO(response.content))
-                else:
-                    image = Image.open(BytesIO(response.content))
-
+                image = Image.open(BytesIO(response.content))
                 return image
             except UnidentifiedImageError as e:
                 print(f"Error opening CAPTCHA image: {e}")
-                print(f"Raw content: {response.content}")
-                return None
-        else:
-            print(f"Failed to get captcha: {response.status_code} - {response.headers['Content-Type']}")
-            print(f"Response content: {response.content}")  # Print or log the actual content
-            return None
+        print(f"Failed to get captcha: {response.status_code}")
+        return None
+
+
+    def request_sms_code(self, captcha_input):
+        hex_time = self.current_epoch_time_as_hex()
+        url = f'https://api.bbaepro.com/api/v2/tools/nonLogin/sms?guest=1&_v=6.6.0&_s={hex_time}'
+        headers = {
+            'Content-Type': 'application/json',
+            'Cookie': "; ".join([f"{key}={value}" for key, value in self.cookies.items()])
+        }
+        data = {
+            "captchaInputText": captcha_input,
+            "mobile": self.user,
+            "type": "MOBILE",
+            "updateType": "MOBILE",
+            "verifyType": "LOGIN",
+            "areaCodeId": "5"
+        }
+        print("Requesting SMS code...")
+        response = requests.post(url, headers=headers, json=data)
+        print(f"Response from SMS code request: {response.json()}")
+        return response.json()
+
 
     def login_with_ticket(self, ticket):
         hex_time = self.current_epoch_time_as_hex()
         url = f'https://api.bbaepro.com/api/v2/security/login?guest=1&_v=6.6.0&_s={hex_time}'
         headers = {
             'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; sdk_gphone64_x86_64 Build/SE1A.211212.001.B1)',
-            'Tz': '-360',
-            'Tzname': 'America/Chicago',
             'Content-Type': 'application/x-www-form-urlencoded',
-            'Accept-Language': 'en',
-            'Accept-Encoding': 'gzip, deflate, br'
+            'Cookie': "; ".join([f"{key}={value}" for key, value in self.cookies.items()])
         }
         data = {
             'ticket': ticket
         }
         print(f"Logging in with ticket for {self.user}")
-        response = requests.post(url, headers=headers, data=data, cookies=self.cookies)
+        response = requests.post(url, headers=headers, data=data)
         self.cookies.update(response.cookies.get_dict())
         self.save_cookies(self.cookies)
         print(f"Login response: {response.json()}")
         return response.json()
+
 
     def get_account_assets(self):
         hex_time = self.current_epoch_time_as_hex()
@@ -183,6 +158,7 @@ class BBAEAPI:
         print(f"Account assets response: {response.json()}")
         return response.json()
 
+
     def get_account_holdings(self):
         hex_time = self.current_epoch_time_as_hex()
         url = f'https://api.bbaepro.com/api/v2/trade/positions?paged=false&skip=0&take=400&version=1&spac=false&_v=6.6.0&_s={hex_time}'
@@ -198,6 +174,7 @@ class BBAEAPI:
         print(f"Account holdings response: {response.json()}")
         return response.json()
 
+
     def get_account_info(self):
         hex_time = self.current_epoch_time_as_hex()
         url = f'https://api.bbaepro.com/api/v2/account/info?_v=6.6.0&_s={hex_time}'
@@ -212,6 +189,7 @@ class BBAEAPI:
         response = requests.get(url, headers=headers, cookies=self.cookies)
         print(f"Account info response: {response.json()}")
         return response.json()
+
 
     def validate_buy(self, symbol, amount, order_side, account_number):
         hex_time = self.current_epoch_time_as_hex()
@@ -241,6 +219,7 @@ class BBAEAPI:
         response = requests.post(url, headers=headers, json=data, cookies=self.cookies)
         print(f"Validation response: {response.json()}")
         return response.json()
+
 
     def execute_buy(self, symbol, amount, account_number, dry_run=False):
         # Determine the order side (1 for buy, 0 for sell)
