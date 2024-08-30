@@ -2,8 +2,11 @@ import os
 import requests
 import uuid
 from time import time
+from dotenv import load_dotenv
 from io import BytesIO
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
+from io import BytesIO
+import base64
 
 class BBAEAPI:
     def __init__(self, user, password, creds_path="./creds/"):
@@ -115,7 +118,7 @@ class BBAEAPI:
 
     def request_captcha(self):
         hex_time = self.current_epoch_time_as_hex()
-        url = f'https://api.bbaepro.com/api/v2/captchaImage/gen?w=90&h=40&forApp=true&guest=1&_v=6.6.0&_s={hex_time}'
+        url = f'https://api.bbaepro.com/api/v2/security/captcha?_v=6.6.0&_s={hex_time}'
         headers = {
             'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; sdk_gphone64_x86_64 Build/SE1A.211212.001.B1)',
             'Accept-Language': 'en',
@@ -125,18 +128,24 @@ class BBAEAPI:
         response = requests.get(url, headers=headers, cookies=self.cookies)
         print(f"CAPTCHA response status: {response.status_code}")
         print(f"CAPTCHA response headers: {response.headers}")
+
         if response.status_code == 200 and 'image' in response.headers['Content-Type']:
             try:
-                image = Image.open(BytesIO(response.content))
+                # Handle GIF images specifically
+                if response.headers['Content-Type'] == 'image/gif':
+                    image = Image.open(BytesIO(response.content))
+                else:
+                    image = Image.open(BytesIO(response.content))
+
                 return image
-            except Exception as e:
+            except UnidentifiedImageError as e:
                 print(f"Error opening CAPTCHA image: {e}")
+                print(f"Raw content: {response.content}")
                 return None
         else:
             print(f"Failed to get captcha: {response.status_code} - {response.headers['Content-Type']}")
             print(f"Response content: {response.content}")  # Print or log the actual content
             return None
-
 
     def login_with_ticket(self, ticket):
         hex_time = self.current_epoch_time_as_hex()
