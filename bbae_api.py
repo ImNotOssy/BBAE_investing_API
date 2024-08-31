@@ -16,15 +16,17 @@ def current_epoch_time_as_hex():
 
 
 class BBAEAPI:
-    def __init__(self, user, password, creds_path="./creds/"):
+    def __init__(self, user, password, filename="BBAE_CREDENTIALS.txt", creds_path="./creds/"):
         self.user = user
         self.password = password
+        self.filename = filename
         self.creds_path = creds_path
         self.cookies = self._load_cookies()
         print(f"BBAEAPI Initialized for {self.user}")
 
     def _save_cookies(self, cookies):
-        filename = os.path.join(self.creds_path, f"BBAE_{self.user[-4:]}.txt")
+        filename = self.filename
+        filename = os.path.join(self.creds_path, filename)
         print(f"Saving cookies to {filename}")
         if not os.path.exists(self.creds_path):
             os.makedirs(self.creds_path)
@@ -35,7 +37,8 @@ class BBAEAPI:
 
     def _load_cookies(self):
         cookies = {}
-        filename = os.path.join(self.creds_path, f"BBAE_{self.user[-4:]}.txt")
+        filename = self.filename
+        filename = os.path.join(self.creds_path, filename)
         if not os.path.exists(self.creds_path):
             os.makedirs(self.creds_path)
         if os.path.exists(filename):
@@ -48,10 +51,6 @@ class BBAEAPI:
         else:
             print(f"No cookies found at {filename}, starting fresh.")
         return cookies
-
-    def login(self):
-        self.make_initial_request()
-        self.generate_login_ticket_sms()
 
     def make_initial_request(self):
         hex_time = current_epoch_time_as_hex()
@@ -265,7 +264,7 @@ class BBAEAPI:
         print(f"Validation response: {response.json()}")
         return response.json()
 
-    def execute_buy(self, symbol, amount, account_number, dry_run=False):
+    def execute_buy(self, symbol, amount, account_number, dry_run=True):
         # Determine the order side (1 for buy, 0 for sell)
         order_side = 1
 
