@@ -17,8 +17,8 @@ def current_epoch_time_as_hex():
 
 class BBAEAPI:
     def __init__(self, user, password, filename="BBAE_CREDENTIALS.txt", creds_path="./creds/"):
-        self.user = user
-        self.password = password
+        self.user = r"" + user
+        self.password = r"" + password
         self.filename = filename
         self.creds_path = creds_path
         self.cookies = self._load_cookies()
