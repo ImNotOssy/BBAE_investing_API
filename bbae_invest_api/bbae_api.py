@@ -61,7 +61,7 @@ class BBAEAPI:
         hex_time = current_epoch_time_as_hex()
         url = f'https://api.bbaepro.com/api/v2/system/inform?guest=1&_v=6.6.0&_s={hex_time}'
         headers = {
-            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; sdk_gphone64_x86_64 Build/SE1A.211212.001.B1)',
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
             'Accept-Language': 'en',
             'Accept-Encoding': 'gzip, deflate, br',
         }
@@ -76,7 +76,7 @@ class BBAEAPI:
         hex_time = current_epoch_time_as_hex()
         url = f'https://api.bbaepro.com/api/v2/multipleFactors/authentication/generateLoginTicket?guest=1&_v=6.6.0&_s={hex_time}'
         headers = {
-            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; sdk_gphone64_x86_64 Build/SE1A.211212.001.B1)',
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
             'Content-Type': 'application/json; charset=UTF-8',
             'Cookie': "; ".join([f"{key}={value}" for key, value in self.cookies.items()])
         }
@@ -96,7 +96,7 @@ class BBAEAPI:
         hex_time = current_epoch_time_as_hex()
         url = f'https://api.bbaepro.com/api/v2/multipleFactors/authentication/generateLoginTicket?guest=1&_v=6.6.0&_s={hex_time}'
         headers = {
-            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; sdk_gphone64_x86_64 Build/SE1A.211212.001.B1)',
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
             'Content-Type': 'application/json; charset=UTF-8',
             'Cookie': "; ".join([f"{key}={value}" for key, value in self.cookies.items()])
         }
@@ -117,7 +117,7 @@ class BBAEAPI:
         hex_time = current_epoch_time_as_hex()
         url = f'https://api.bbaepro.com/api/v2/security/captcha?_v=6.6.0&_s={hex_time}'
         headers = {
-            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; sdk_gphone64_x86_64 Build/SE1A.211212.001.B1)',
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
             'Accept-Language': 'en',
             'Accept-Encoding': 'gzip, deflate, br'
         }
@@ -181,7 +181,7 @@ class BBAEAPI:
         hex_time = current_epoch_time_as_hex()
         url = f'https://api.bbaepro.com/api/v2/security/login?guest=1&_v=6.6.0&_s={hex_time}'
         headers = {
-            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; sdk_gphone64_x86_64 Build/SE1A.211212.001.B1)',
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
             'Content-Type': 'application/x-www-form-urlencoded',
             'Cookie': "; ".join([f"{key}={value}" for key, value in self.cookies.items()])
         }
@@ -199,7 +199,7 @@ class BBAEAPI:
         hex_time = current_epoch_time_as_hex()
         url = f'https://api.bbaepro.com/api/v2/account/assetByUser?_v=6.6.0&_s={hex_time}'
         headers = {
-            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; sdk_gphone64_x86_64 Build/SE1A.211212.001.B1)',
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
             'Tz': '-360',
             'Tzname': 'America/Chicago',
             'Accept-Language': 'en',
@@ -214,7 +214,7 @@ class BBAEAPI:
         hex_time = current_epoch_time_as_hex()
         url = f'https://api.bbaepro.com/api/v2/trade/positions?paged=false&skip=0&take=400&version=1&spac=false&_v=6.6.0&_s={hex_time}'
         headers = {
-            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; sdk_gphone64_x86_64 Build/SE1A.211212.001.B1)',
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
             'Tz': '-360',
             'Tzname': 'America/Chicago',
             'Accept-Language': 'en',
@@ -229,7 +229,7 @@ class BBAEAPI:
         hex_time = current_epoch_time_as_hex()
         url = f'https://api.bbaepro.com/api/v2/account/info?_v=6.6.0&_s={hex_time}'
         headers = {
-            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; sdk_gphone64_x86_64 Build/SE1A.211212.001.B1)',
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
             'Tz': '-360',
             'Tzname': 'America/Chicago',
             'Accept-Language': 'en',
@@ -244,7 +244,7 @@ class BBAEAPI:
         hex_time = current_epoch_time_as_hex()
         url = f'https://api.bbaepro.com/api/v2/us/trade/validateBuy?_v=6.6.0&_s={hex_time}'
         headers = {
-            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; sdk_gphone64_x86_64 Build/SE1A.211212.001.B1)',
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
             'Accept-Language': 'en',
             'Content-Type': 'application/json; charset=UTF-8',
         }
@@ -291,7 +291,7 @@ class BBAEAPI:
         hex_time = current_epoch_time_as_hex()
         url = f'https://api.bbaepro.com/api/v2/trade/buy?_v=6.6.0&_s={hex_time}'
         headers = {
-            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; sdk_gphone64_x86_64 Build/SE1A.211212.001.B1)',
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
             'Accept-Language': 'en',
             'Content-Type': 'application/json; charset=UTF-8',
         }
@@ -316,4 +316,86 @@ class BBAEAPI:
         self._debug_print(f"Executing buy for {amount} shares of {symbol} at ${data['entrustPrice']}")
         response = requests.post(url, headers=headers, json=data, cookies=self.cookies)
         self._debug_print(f"Buy response: {response.json()}")
+        return response.json()
+
+    def check_stock_holdings(self, symbol, account_number):
+        """Check if the stock is currently held and return the available amount."""
+        hex_time = current_epoch_time_as_hex()
+        url = f'https://api.bbaepro.com/api/v2/trade/closeTradeAmount?_v=5.4.1&_s={hex_time}'
+        headers = {
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
+            'Accept-Language': 'en',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Content-Type': 'application/json; charset=UTF-8',
+        }
+        data = {
+            "fractions": False,
+            "fractionsType": 0,
+            "orderSide": 2,  # 2 for checking amount held before selling
+            "symbol": symbol,
+            "usAccountId": account_number
+        }
+        response = requests.post(url, headers=headers, json=data, cookies=self.cookies)
+        return response.json()
+
+    def validate_sell(self, symbol, amount, account_number):
+        """Validate the sell order."""
+        hex_time = current_epoch_time_as_hex()
+        url = f'https://api.bbaepro.com/api/v2/us/trade/validateSell?_v=5.4.1&_s={hex_time}'
+        headers = {
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
+            'Accept-Language': 'en',
+            'Content-Type': 'application/json; charset=UTF-8',
+        }
+        data = {
+            "allowExtHrsFill": False,
+            "displayAmount": str(amount),
+            "entrustAmount": str(amount),
+            "fractions": False,
+            "fractionsType": 0,
+            "isCombinedOption": False,
+            "isOption": False,
+            "orderSide": 2,  # 2 for selling
+            "orderSource": 0,
+            "orderTimeInForce": "DAY",
+            "symbol": symbol,
+            "tradeNativeType": 0,
+            "type": "MARKET",
+            "usAccountId": account_number
+        }
+        response = requests.post(url, headers=headers, json=data, cookies=self.cookies)
+        return response.json()
+
+    def execute_sell(self, symbol, amount, account_number, entrust_price, dry_run=True):
+        """Execute the sell order."""
+        if dry_run:
+            print(f"Simulated sell: {amount} shares of {symbol}")
+            return {"Outcome": "Success", "Message": "Dry Run Success"}
+
+        hex_time = current_epoch_time_as_hex()
+        url = f'https://api.bbaepro.com/api/v2/trade/sell?_v=5.4.1&_s={hex_time}'
+        headers = {
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
+            'Accept-Language': 'en',
+            'Content-Type': 'application/json; charset=UTF-8',
+        }
+        data = {
+            "allowExtHrsFill": False,
+            "displayAmount": str(amount),
+            "entrustAmount": str(amount),
+            "entrustPrice": entrust_price,
+            "fractions": False,
+            "fractionsType": 0,
+            "idempotentId": str(uuid.uuid4()),
+            "isCombinedOption": False,
+            "isOption": False,
+            "orderSide": 2,  # 2 for selling
+            "orderSource": 0,
+            "orderTimeInForce": "DAY",
+            "symbol": symbol,
+            "tradeNativeType": 0,
+            "type": "MARKET",
+            "usAccountId": account_number
+        }
+        response = requests.post(url, headers=headers, json=data, cookies=self.cookies)
         return response.json()
