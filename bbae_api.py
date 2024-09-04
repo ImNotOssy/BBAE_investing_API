@@ -16,24 +16,29 @@ def current_epoch_time_as_hex():
 
 
 class BBAEAPI:
-    def __init__(self, user, password, filename="BBAE_CREDENTIALS.txt", creds_path="./creds/"):
+    def __init__(self, user, password, filename="BBAE_CREDENTIALS.txt", creds_path="./creds/", debug=False):
         self.user = user
         self.password = password
         self.filename = filename
         self.creds_path = creds_path
         self.cookies = self._load_cookies()
-        print(f"BBAEAPI Initialized for {self.user}")
+        self.debug = debug
+        self._debug_print(f"BBAEAPI Initialized for {self.user}")
+
+    def _debug_print(self, text):
+        if self.debug:
+            print(text)
 
     def _save_cookies(self, cookies):
         filename = self.filename
         filename = os.path.join(self.creds_path, filename)
-        print(f"Saving cookies to {filename}")
+        self._debug_print(f"Saving cookies to {filename}")
         if not os.path.exists(self.creds_path):
             os.makedirs(self.creds_path)
         with open(filename, 'w') as file:
             for key, value in cookies.items():
                 file.write(f"{key}={value}\n")
-        print("Cookies saved successfully.")
+        self._debug_print("Cookies saved successfully.")
 
     def _load_cookies(self):
         cookies = {}
@@ -42,14 +47,14 @@ class BBAEAPI:
         if not os.path.exists(self.creds_path):
             os.makedirs(self.creds_path)
         if os.path.exists(filename):
-            print(f"Loading cookies from {filename}")
+            self._debug_print(f"Loading cookies from {filename}")
             with open(filename, 'r') as file:
                 for line in file:
                     key, value = line.strip().split('=')
                     cookies[key] = value
-            print("Cookies loaded successfully.")
+            self._debug_print("Cookies loaded successfully.")
         else:
-            print(f"No cookies found at {filename}, starting fresh.")
+            self._debug_print(f"No cookies found at {filename}, starting fresh.")
         return cookies
 
     def make_initial_request(self):
@@ -60,11 +65,11 @@ class BBAEAPI:
             'Accept-Language': 'en',
             'Accept-Encoding': 'gzip, deflate, br',
         }
-        print(f"Making initial request to {url}")
+        self._debug_print(f"Making initial request to {url}")
         response = requests.get(url, headers=headers)
         self.cookies.update(response.cookies.get_dict())
         self._save_cookies(self.cookies)
-        print(f"Initial request complete with status code {response.status_code}")
+        self._debug_print(f"Initial request complete with status code {response.status_code}")
         return response.json()
 
     def generate_login_ticket_email(self, sms_code=None):
@@ -82,9 +87,9 @@ class BBAEAPI:
         }
         if sms_code is not None:
             data.update({"smsInputText": sms_code})
-        print(f"Requesting SMS login ticket for {self.user}")
+        self._debug_print(f"Requesting SMS login ticket for {self.user}")
         response = requests.post(url, headers=headers, json=data)
-        print(f"Response from login ticket request: {response.json()}")
+        self._debug_print(f"Response from login ticket request: {response.json()}")
         return response.json()
 
     def generate_login_ticket_sms(self, sms_code=None):
@@ -103,9 +108,9 @@ class BBAEAPI:
         }
         if sms_code is not None:
             data.update({"smsInputText": sms_code})
-        print(f"Requesting SMS login ticket for {self.user}")
+        self._debug_print(f"Requesting SMS login ticket for {self.user}")
         response = requests.post(url, headers=headers, json=data)
-        print(f"Response from login ticket request: {response.json()}")
+        self._debug_print(f"Response from login ticket request: {response.json()}")
         return response.json()
 
     def request_captcha(self):
@@ -116,7 +121,7 @@ class BBAEAPI:
             'Accept-Language': 'en',
             'Accept-Encoding': 'gzip, deflate, br'
         }
-        print("Requesting captcha image...")
+        self._debug_print("Requesting captcha image...")
         response = requests.get(url, headers=headers, cookies=self.cookies)
         if response.status_code == 200 and 'image' in response.headers['Content-Type']:
             try:
@@ -144,9 +149,9 @@ class BBAEAPI:
             data.update({
                 "captchaInputText": captcha_input,
             })
-        print("Requesting SMS code...")
+        self._debug_print("Requesting SMS code...")
         response = requests.post(url, headers=headers, json=data)
-        print(f"Response from SMS code request: {response.json()}")
+        self._debug_print(f"Response from SMS code request: {response.json()}")
         return response.json()
 
     def request_sms_code(self, captcha_input=None):
@@ -167,9 +172,9 @@ class BBAEAPI:
             data.update({
                 "captchaInputText": captcha_input,
             })
-        print("Requesting SMS code...")
+        self._debug_print("Requesting SMS code...")
         response = requests.post(url, headers=headers, json=data)
-        print(f"Response from SMS code request: {response.json()}")
+        self._debug_print(f"Response from SMS code request: {response.json()}")
         return response.json()
 
     def login_with_ticket(self, ticket):
@@ -183,11 +188,11 @@ class BBAEAPI:
         data = {
             'ticket': ticket
         }
-        print(f"Logging in with ticket for {self.user}")
+        self._debug_print(f"Logging in with ticket for {self.user}")
         response = requests.post(url, headers=headers, data=data)
         self.cookies.update(response.cookies.get_dict())
         self._save_cookies(self.cookies)
-        print(f"Login response: {response.json()}")
+        self._debug_print(f"Login response: {response.json()}")
         return response.json()
 
     def get_account_assets(self):
@@ -200,9 +205,9 @@ class BBAEAPI:
             'Accept-Language': 'en',
             'Accept-Encoding': 'gzip, deflate, br'
         }
-        print(f"Fetching account assets for {self.user}")
+        self._debug_print(f"Fetching account assets for {self.user}")
         response = requests.get(url, headers=headers, cookies=self.cookies)
-        print(f"Account assets response: {response.json()}")
+        self._debug_print(f"Account assets response: {response.json()}")
         return response.json()
 
     def get_account_holdings(self):
@@ -215,9 +220,9 @@ class BBAEAPI:
             'Accept-Language': 'en',
             'Accept-Encoding': 'gzip, deflate, br'
         }
-        print(f"Fetching account holdings for {self.user}")
+        self._debug_print(f"Fetching account holdings for {self.user}")
         response = requests.get(url, headers=headers, cookies=self.cookies)
-        print(f"Account holdings response: {response.json()}")
+        self._debug_print(f"Account holdings response: {response.json()}")
         return response.json()
 
     def get_account_info(self):
@@ -230,9 +235,9 @@ class BBAEAPI:
             'Accept-Language': 'en',
             'Accept-Encoding': 'gzip, deflate, br'
         }
-        print(f"Fetching account info for {self.user}")
+        self._debug_print(f"Fetching account info for {self.user}")
         response = requests.get(url, headers=headers, cookies=self.cookies)
-        print(f"Account info response: {response.json()}")
+        self._debug_print(f"Account info response: {response.json()}")
         return response.json()
 
     def validate_buy(self, symbol, amount, order_side, account_number):
@@ -259,9 +264,9 @@ class BBAEAPI:
             "type": "MARKET",
             "usAccountId": account_number
         }
-        print(f"Validating buy for {amount} shares of {symbol}")
+        self._debug_print(f"Validating buy for {amount} shares of {symbol}")
         response = requests.post(url, headers=headers, json=data, cookies=self.cookies)
-        print(f"Validation response: {response.json()}")
+        self._debug_print(f"Validation response: {response.json()}")
         return response.json()
 
     def execute_buy(self, symbol, amount, account_number, dry_run=True):
@@ -279,7 +284,7 @@ class BBAEAPI:
             # For a dry run, just print the simulated order details
             total_cost = validation_response['Data']['totalWithCommission']
             entrust_amount = validation_response['Data']['entrustAmount']
-            print(f"Simulated buy: {entrust_amount} shares of {symbol} for a total of ${total_cost}")
+            self._debug_print(f"Simulated buy: {entrust_amount} shares of {symbol} for a total of ${total_cost}")
             return validation_response
 
         # Proceed to actual buy if not a dry run
@@ -308,7 +313,7 @@ class BBAEAPI:
             "type": validation_response['Data']['type'],
             "usAccountId": account_number
         }
-        print(f"Executing buy for {amount} shares of {symbol} at ${data['entrustPrice']}")
+        self._debug_print(f"Executing buy for {amount} shares of {symbol} at ${data['entrustPrice']}")
         response = requests.post(url, headers=headers, json=data, cookies=self.cookies)
-        print(f"Buy response: {response.json()}")
+        self._debug_print(f"Buy response: {response.json()}")
         return response.json()
