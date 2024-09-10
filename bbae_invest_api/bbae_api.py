@@ -1,5 +1,5 @@
 import os
-
+import pickle
 import requests
 import uuid
 from time import time
@@ -16,7 +16,7 @@ def current_epoch_time_as_hex():
 
 
 class BBAEAPI:
-    def __init__(self, user, password, filename="BBAE_CREDENTIALS.txt", creds_path="./creds/", debug=False):
+    def __init__(self, user, password, filename="BBAE_CREDENTIALS.pkl", creds_path="./creds/", debug=False):
         self.user = r"" + user
         self.password = r"" + password
         self.filename = filename
@@ -31,30 +31,28 @@ class BBAEAPI:
 
     def _save_cookies(self, cookies):
         filename = self.filename
-        filename = os.path.join(self.creds_path, filename)
-        self._debug_print(f"Saving cookies to {filename}")
+        filepath = os.path.join(self.creds_path, filename)
+        self._debug_print(f"Saving cookies to {filepath}")
         if not os.path.exists(self.creds_path):
             os.makedirs(self.creds_path)
-        with open(filename, 'w') as file:
-            for key, value in cookies.items():
-                file.write(f"{key}={value}\n")
+        with open(filepath, 'wb') as file:
+            pickle.dump(cookies, file)
         self._debug_print("Cookies saved successfully.")
 
     def _load_cookies(self):
-        cookies = {}
         filename = self.filename
-        filename = os.path.join(self.creds_path, filename)
-        if not os.path.exists(self.creds_path):
-            os.makedirs(self.creds_path)
-        if os.path.exists(filename):
-            self._debug_print(f"Loading cookies from {filename}")
-            with open(filename, 'r') as file:
-                for line in file:
-                    key, value = line.strip().split('=')
-                    cookies[key] = value
-            self._debug_print("Cookies loaded successfully.")
+        filepath = os.path.join(self.creds_path, filename)
+        cookies = {}
+        if os.path.exists(filepath):
+            self._debug_print(f"Loading cookies from {filepath}")
+            try:
+                with open(filepath, 'rb') as file:
+                    cookies = pickle.load(file)
+                self._debug_print("Cookies loaded successfully.")
+            except (FileNotFoundError, EOFError, pickle.UnpicklingError) as e:
+                self._debug_print(f"Error loading cookies: {e}")
         else:
-            self._debug_print(f"No cookies found at {filename}, starting fresh.")
+            self._debug_print(f"No cookies found at {filepath}, starting fresh.")
         return cookies
 
     def make_initial_request(self):
