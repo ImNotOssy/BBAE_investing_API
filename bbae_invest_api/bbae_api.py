@@ -1,347 +1,424 @@
-import asyncio
 import os
-import traceback
+import pickle
+import requests
+import uuid
+from time import time
+from PIL import Image, UnidentifiedImageError
 from io import BytesIO
 
-from bbae_invest_api import BBAEAPI
-from dotenv import load_dotenv
 
-from helperAPI import (
-    Brokerage,
-    getOTPCodeDiscord,
-    getUserInputDiscord,
-    maskString,
-    printAndDiscord,
-    printHoldings,
-    send_captcha_to_discord,
-    stockOrder
-)
+def current_epoch_time_as_hex():
+    epoch_time = str("%.18f" % time())
+    split = epoch_time.split(".")
+    hex1 = hex(int(split[0]))[2:]
+    hex2 = hex(int(split[1]))[2:]
+    return f"{hex1}+{hex2}"
 
 
-def bbae_init(BBAE_EXTERNAL=None, botObj=None, loop=None):
-    load_dotenv()
-    bbae_obj = Brokerage("BBAE")
-    if not os.getenv("BBAE") and BBAE_EXTERNAL is None:
-        print("BBAE not found, skipping...")
-        return None
-    BBAE = (
-        os.environ["BBAE"].strip().split(",")
-        if BBAE_EXTERNAL is None
-        else BBAE_EXTERNAL.strip().split(",")
-    )
-    print("Logging in to BBAE...")
-    for index, account in enumerate(BBAE):
-        name = f"BBAE {index + 1}"
-        try:
-            user, password = account.split(":")[:2]
-            use_email = "@" in user
-            # Initialize the BBAE API object
-            bb = BBAEAPI(
-                user, password, filename=f"BBAE_{index + 1}.pkl", creds_path="./creds/"
-            )
-            bb.make_initial_request()
-            # All the rest of the requests responsible for getting authenticated
-            login(bb, botObj, name, loop, use_email)
-            account_assets = bb.get_account_assets()
-            account_info = bb.get_account_info()
-            account_number = str(account_info["Data"]["accountNumber"])
-            # Set account values
-            masked_account_number = maskString(account_number)
-            bbae_obj.set_account_number(name, masked_account_number)
-            bbae_obj.set_account_totals(
-                name,
-                masked_account_number,
-                float(account_assets["Data"]["totalAssets"]),
-            )
-            bbae_obj.set_logged_in_object(name, bb, "bb")
-        except Exception as e:
-            print(f"Error logging into BBAE: {e}")
-            print(traceback.format_exc())
-            continue
-    print("Logged into BBAE!")
-    return bbae_obj
+class BBAEAPI:
+    def __init__(self, user, password, filename="BBAE_CREDENTIALS.pkl", creds_path="./creds/", debug=False):
+        self.user = r"" + user
+        self.password = r"" + password
+        self.filename = filename
+        self.creds_path = creds_path
+        self.debug = debug
+        self.cookies = self._load_cookies()
+        self._debug_print(f"BBAEAPI Initialized for {self.user}")
 
+    def _debug_print(self, text):
+        if self.debug:
+            print(text)
 
-def login(bb: BBAEAPI, botObj, name, loop, use_email):
-    try:
-        # API call to generate the login ticket
-        if use_email:
-            ticket_response = bb.generate_login_ticket_email()
-        else:
-            ticket_response = bb.generate_login_ticket_sms()
-        # Ensure "Data" key exists and proceed with verification if necessary
-        if ticket_response.get("Data") is None:
-            raise Exception("Invalid response from generating login ticket")
-        # Check if SMS or CAPTCHA verification are required
-        data = ticket_response["Data"]
-        if data.get("needSmsVerifyCode", False):
-            sms_and_captcha_response = handle_captcha_and_sms(
-                bb, botObj, data, loop, name, use_email
-            )
-            if not sms_and_captcha_response:
-                raise Exception("Error solving SMS or Captcha")
-            # Get the OTP code from the user
-            if botObj is not None and loop is not None:
-                otp_code = asyncio.run_coroutine_threadsafe(
-                    getOTPCodeDiscord(botObj, name, timeout=300, loop=loop),
-                    loop,
-                ).result()
-            else:
-                otp_code = input("Enter security code: ")
-            if otp_code is None:
-                raise Exception("No SMS code received")
-            # Login with the OTP code
-            if use_email:
-                ticket_response = bb.generate_login_ticket_email(sms_code=otp_code)
-            else:
-                ticket_response = bb.generate_login_ticket_sms(sms_code=otp_code)
-            if ticket_response.get("Message") == "Incorrect verification code.":
-                raise Exception("Incorrect OTP code")
-        # Handle the login ticket
-        if (
-            ticket_response.get("Data") is not None
-            and ticket_response.get("Data").get("ticket") is not None
-        ):
-            ticket = ticket_response["Data"]["ticket"]
-        else:
-            print(f"{name}: Raw response object: {ticket_response}")
-            raise Exception(
-                f"Login failed. No ticket generated. Response: {ticket_response}"
-            )
-        # Login with the ticket
-        login_response = bb.login_with_ticket(ticket)
-        if login_response.get("Outcome") != "Success":
-            raise Exception(f"Login failed. Response: {login_response}")
-        return True
-    except Exception as e:
-        print(f"Error in SMS login: {e}")
-        print(traceback.format_exc())
-        return False
+    def _save_cookies(self, cookies):
+        filename = self.filename
+        filepath = os.path.join(self.creds_path, filename)
+        self._debug_print(f"Saving cookies to {filepath}")
+        if not os.path.exists(self.creds_path):
+            os.makedirs(self.creds_path)
+        with open(filepath, 'wb') as file:
+            pickle.dump(cookies, file)
+        self._debug_print("Cookies saved successfully.")
 
-
-def handle_captcha_and_sms(bb: BBAEAPI, botObj, data, loop, name, use_email):
-    try:
-        # If CAPTCHA is needed it will generate an SMS code as well
-        if data.get("needCaptchaCode", False):
-            print(f"{name}: CAPTCHA required. Requesting CAPTCHA image...")
-            sms_response = solve_captcha(bb, botObj, name, loop, use_email)
-            if not sms_response:
-                raise Exception("Failure solving CAPTCHA!")
-        else:
-            print(f"{name}: Requesting code...")
-            sms_response = send_sms_code(bb, name, use_email)
-            if not sms_response:
-                raise Exception("Unable to retrieve sms code!")
-        return True
-    except Exception as e:
-        print(f"Error in CAPTCHA or SMS: {e}")
-        print(traceback.format_exc())
-        return False
-
-
-def solve_captcha(bb: BBAEAPI, botObj, name, loop, use_email):
-    try:
-        captcha_image = bb.request_captcha()
-        if not captcha_image:
-            raise Exception("Unable to request CAPTCHA image, aborting...")
-        # Send the CAPTCHA image to Discord for manual input
-        print("Sending CAPTCHA to Discord for user input...")
-        file = BytesIO()
-        captcha_image.save(file, format="PNG")
-        file.seek(0)
-        # Retrieve input
-        if botObj is not None and loop is not None:
-            asyncio.run_coroutine_threadsafe(
-                send_captcha_to_discord(file),
-                loop,
-            ).result()
-            captcha_input = asyncio.run_coroutine_threadsafe(
-                getUserInputDiscord(
-                    botObj, f"{name} requires CAPTCHA input", timeout=300, loop=loop
-                ),
-                loop,
-            ).result()
-        else:
-            captcha_image.save("./captcha.png", format="PNG")
-            captcha_input = input(
-                "CAPTCHA image saved to ./captcha.png. Please open it and type in the code: "
-            )
-        if captcha_input is None:
-            raise Exception("No CAPTCHA code found")
-        # Send the CAPTCHA to the appropriate API based on login type
-        if use_email:
-            sms_request_response = bb.request_email_code(captcha_input=captcha_input)
-        else:
-            sms_request_response = bb.request_sms_code(captcha_input=captcha_input)
-        if sms_request_response.get("Message") == "Incorrect verification code.":
-            raise Exception("Incorrect CAPTCHA code!")
-        return sms_request_response
-    except Exception as e:
-        print(f"{name}: Error solving CAPTCHA code: {e}")
-        print(traceback.format_exc())
-        return None
-
-
-def send_sms_code(bb: BBAEAPI, name, use_email, captcha_input=None):
-    if use_email:
-        sms_code_response = bb.request_email_code(captcha_input=captcha_input)
-    else:
-        sms_code_response = bb.request_sms_code(captcha_input=captcha_input)
-    if sms_code_response.get("Message") == "Incorrect verification code.":
-        print(f"{name}: Incorrect CAPTCHA code, retrying...")
-        return False
-    return sms_code_response
-
-
-def bbae_holdings(bbo: Brokerage, loop=None):
-    for key in bbo.get_account_numbers():
-        for account in bbo.get_account_numbers(key):
-            obj: BBAEAPI = bbo.get_logged_in_objects(key, "bb")
+    def _load_cookies(self):
+        filename = self.filename
+        filepath = os.path.join(self.creds_path, filename)
+        cookies = {}
+        if os.path.exists(filepath):
+            self._debug_print(f"Loading cookies from {filepath}")
             try:
-                positions = obj.get_account_holdings()
-                if positions.get("Data") is not None:
-                    for holding in positions["Data"]:
-                        qty = holding["CurrentAmount"]
-                        if float(qty) == 0:
-                            continue
-                        sym = holding["displaySymbol"]
-                        cp = holding["Last"]
-                        bbo.set_holdings(key, account, sym, qty, cp)
-            except Exception as e:
-                printAndDiscord(f"Error getting BBAE holdings: {e}")
-                print(traceback.format_exc())
-                continue
-    printHoldings(bbo, loop, False)
+                with open(filepath, 'rb') as file:
+                    cookies = pickle.load(file)
+                self._debug_print("Cookies loaded successfully.")
+            except (FileNotFoundError, EOFError, pickle.UnpicklingError) as e:
+                self._debug_print(f"Error loading cookies: {e}")
+        else:
+            self._debug_print(f"No cookies found at {filepath}, starting fresh.")
+        return cookies
 
+    def make_initial_request(self):
+        hex_time = current_epoch_time_as_hex()
+        url = f'https://api.bbaepro.com/api/v2/system/inform?guest=1&_v=6.6.0&_s={hex_time}'
+        headers = {
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
+            'Accept-Language': 'en',
+            'Accept-Encoding': 'gzip, deflate, br',
+        }
+        self._debug_print(f"Making initial request to {url}")
+        response = requests.get(url, headers=headers)
+        self.cookies.update(response.cookies.get_dict())
+        self._save_cookies(self.cookies)
+        self._debug_print(f"Initial request complete with status code {response.status_code}")
+        return response.json()
 
-def bbae_transaction(bbo: Brokerage, orderObj: stockOrder, loop=None):
-    print()
-    print("==============================")
-    print("BBAE")
-    print("==============================")
-    print()
-    for s in orderObj.get_stocks():
-        for key in bbo.get_account_numbers():
-            action = orderObj.get_action().lower()
-            printAndDiscord(
-                f"{key}: {action}ing {orderObj.get_amount()} of {s}",
-                loop,
-            )
-            for account in bbo.get_account_numbers(key):
-                obj: BBAEAPI = bbo.get_logged_in_objects(key, "bb")
-                try:
-                    quantity = orderObj.get_amount()
-                    is_dry_run = orderObj.get_dry()
-                    # Buy
-                    if action == "buy":
-                        stock_info_response = obj.get_simple_stock_info(s)
-                        
-                        order_type = "MARKET"
-                        entrust_price = None
+    def generate_login_ticket_email(self, sms_code=None):
+        hex_time = current_epoch_time_as_hex()
+        url = f'https://api.bbaepro.com/api/v2/multipleFactors/authentication/generateLoginTicket?guest=1&_v=6.6.0&_s={hex_time}'
+        headers = {
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
+            'Content-Type': 'application/json; charset=UTF-8',
+            'Cookie': "; ".join([f"{key}={value}" for key, value in self.cookies.items()])
+        }
+        data = {
+            "password": self.password,
+            "type": "EMAIL",
+            "userName": self.user,
+        }
+        if sms_code is not None:
+            data.update({"smsInputText": sms_code})
+        self._debug_print(f"Requesting SMS login ticket for {self.user}")
+        response = requests.post(url, headers=headers, json=data)
+        self._debug_print(f"Response from login ticket request: {response.json()}")
+        return response.json()
 
-                        if stock_info_response.get("Data") and stock_info_response["Data"].get("data"):
-                            meta = stock_info_response["Data"]["meta"]
-                            data = stock_info_response["Data"]["data"][0]
-                            
-                            try:
-                                exchange_idx = meta.index("lastExchangeShortName")
-                                price_idx = meta.index("Last")
-                                exchange = data[exchange_idx]
-                                last_price = data[price_idx]
+    def generate_login_ticket_sms(self, sms_code=None):
+        hex_time = current_epoch_time_as_hex()
+        url = f'https://api.bbaepro.com/api/v2/multipleFactors/authentication/generateLoginTicket?guest=1&_v=6.6.0&_s={hex_time}'
+        headers = {
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
+            'Content-Type': 'application/json; charset=UTF-8',
+            'Cookie': "; ".join([f"{key}={value}" for key, value in self.cookies.items()])
+        }
+        data = {
+            "password": self.password,
+            "type": "MOBILE",
+            "userName": self.user,
+            "areaCodeId": "5"
+        }
+        if sms_code is not None:
+            data.update({"smsInputText": sms_code})
+        self._debug_print(f"Requesting SMS login ticket for {self.user}")
+        response = requests.post(url, headers=headers, json=data)
+        self._debug_print(f"Response from login ticket request: {response.json()}")
+        return response.json()
 
-                                if "OTC" in (exchange or ""):
-                                    order_type = "LIMIT"
-                                    entrust_price = last_price
-                                    printAndDiscord(f"{key} {account}: Detected OTC stock. Setting LIMIT order at ${last_price}", loop)
-                                else:
-                                    printAndDiscord(f"{key} {account}: Detected non-OTC stock. Using MARKET order.", loop)
-                            
-                            except (ValueError, IndexError) as e:
-                                printAndDiscord(f"{key} {account}: Could not parse stock info, defaulting to MARKET order. Error: {e}", loop)
-                        
-                        # --- End "Check-First" Logic ---
+    def request_captcha(self):
+        hex_time = current_epoch_time_as_hex()
+        url = f'https://api.bbaepro.com/api/v2/security/captcha?_v=6.6.0&_s={hex_time}'
+        headers = {
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
+            'Accept-Language': 'en',
+            'Accept-Encoding': 'gzip, deflate, br'
+        }
+        self._debug_print("Requesting captcha image...")
+        response = requests.get(url, headers=headers, cookies=self.cookies)
+        if response.status_code == 200 and 'image' in response.headers['Content-Type']:
+            try:
+                image = Image.open(BytesIO(response.content))
+                return image
+            except UnidentifiedImageError as e:
+                print(f"Error opening CAPTCHA image: {e}")
+        print(f"Failed to get captcha: {response.status_code}")
+        return None
 
-                        # Proceed to validation with the correct order type
-                        validation_response = obj.validate_buy(
-                            symbol=s,
-                            amount=quantity,
-                            order_side=1,
-                            account_number=account,
-                            order_type=order_type,
-                            entrust_price=entrust_price
-                        )
+    def request_email_code(self, captcha_input=None):
+        hex_time = current_epoch_time_as_hex()
+        url = f'https://api.bbaepro.com/api/v2/tools/nonLogin/sms?guest=1&_v=6.6.0&_s={hex_time}'
+        headers = {
+            'Content-Type': 'application/json',
+            'Cookie': "; ".join([f"{key}={value}" for key, value in self.cookies.items()])
+        }
+        data = {
+            "email": self.user,
+            "type": "EMAIL",
+            "updateType": "EMAIL",
+            "verifyType": "LOGIN",
+        }
+        if captcha_input is not None:
+            data.update({
+                "captchaInputText": captcha_input,
+            })
+        self._debug_print("Requesting SMS code...")
+        response = requests.post(url, headers=headers, json=data)
+        self._debug_print(f"Response from SMS code request: {response.json()}")
+        return response.json()
 
-                        if validation_response["Outcome"] != "Success":
-                            printAndDiscord(
-                                f"{key} {account}: Validation failed for buying {quantity} of {s}: {validation_response.get('Message', 'Unknown error')}",
-                                loop,
-                            )
-                            continue
-                            
-                        # Proceed to execute the buy if not in dry run mode
-                        if not is_dry_run:
-                            buy_response = obj.execute_buy(
-                                symbol=s,
-                                amount=quantity,
-                                account_number=account,
-                                dry_run=is_dry_run,
-                                validation_response=validation_response # Pass the successful validation
-                            )
-                            message = buy_response.get("Message", "No message")
-                        else:
-                            order_type_msg = validation_response.get("Data", {}).get("type", "UNKNOWN")
-                            message = f"Dry Run Success ({order_type_msg} order)"
+    def request_sms_code(self, captcha_input=None):
+        hex_time = current_epoch_time_as_hex()
+        url = f'https://api.bbaepro.com/api/v2/tools/nonLogin/sms?guest=1&_v=6.6.0&_s={hex_time}'
+        headers = {
+            'Content-Type': 'application/json',
+            'Cookie': "; ".join([f"{key}={value}" for key, value in self.cookies.items()])
+        }
+        data = {
+            "mobile": self.user,
+            "type": "MOBILE",
+            "updateType": "MOBILE",
+            "verifyType": "LOGIN",
+            "areaCodeId": "5"
+        }
+        if captcha_input is not None:
+            data.update({
+                "captchaInputText": captcha_input,
+            })
+        self._debug_print("Requesting SMS code...")
+        response = requests.post(url, headers=headers, json=data)
+        self._debug_print(f"Response from SMS code request: {response.json()}")
+        return response.json()
 
-                    # Sell (unchanged from original file)
-                    elif action == "sell":
-                        # Check stock holdings before attempting to sell
-                        holdings_response = obj.check_stock_holdings(
-                            symbol=s, account_number=account
-                        )
-                        if holdings_response["Outcome"] != "Success":
-                            printAndDiscord(
-                                f"{key} {account}: Error checking holdings: {holdings_response['Message']}",
-                                loop,
-                            )
-                            continue
-                        available_amount = float(
-                            holdings_response["Data"]["enableAmount"]
-                        )
-                        # If trying to sell more than available, skip to the next
-                        if quantity > available_amount:
-                            printAndDiscord(
-                                f"{key} {account}: Not enough shares to sell {quantity} of {s}. Available: {available_amount}",
-                                loop,
-                            )
-                            continue
-                        # Validate the sell transaction
-                        validation_response = obj.validate_sell(
-                            symbol=s, amount=quantity, account_number=account
-                        )
-                        if validation_response["Outcome"] != "Success":
-                            printAndDiscord(
-                                f"{key} {account}: Validation failed for selling {quantity} of {s}: {validation_response['Message']}",
-                                loop,
-                            )
-                            continue
-                        # Proceed to execute the sell if not in dry run mode
-                        if not is_dry_run:
-                            entrust_price = validation_response["Data"]["entrustPrice"]
-                            sell_response = obj.execute_sell(
-                                symbol=s,
-                                amount=quantity,
-                                account_number=account,
-                                entrust_price=entrust_price,
-                                dry_run=is_dry_run,
-                            )
-                            message = sell_response["Message"]
-                        else:
-                            message = "Dry Run Success"
-                    printAndDiscord(
-                        f"{key}: {orderObj.get_action().capitalize()} {quantity} of {s} in {account}: {message}",
-                        loop,
-                    )
-                except Exception as e:
-                    printAndDiscord(f"{key} {account}: Error placing order: {e}", loop)
-                    print(traceback.format_exc())
-                    continue
+    def login_with_ticket(self, ticket):
+        hex_time = current_epoch_time_as_hex()
+        url = f'https://api.bbaepro.com/api/v2/security/login?guest=1&_v=6.6.0&_s={hex_time}'
+        headers = {
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Cookie': "; ".join([f"{key}={value}" for key, value in self.cookies.items()])
+        }
+        data = {
+            'ticket': ticket
+        }
+        self._debug_print(f"Logging in with ticket for {self.user}")
+        response = requests.post(url, headers=headers, data=data)
+        self.cookies.update(response.cookies.get_dict())
+        self._save_cookies(self.cookies)
+        self._debug_print(f"Login response: {response.json()}")
+        return response.json()
+
+    def get_account_assets(self):
+        hex_time = current_epoch_time_as_hex()
+        url = f'https://api.bbaepro.com/api/v2/account/assetByUser?_v=6.6.0&_s={hex_time}'
+        headers = {
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
+            'Tz': '-360',
+            'Tzname': 'America/Chicago',
+            'Accept-Language': 'en',
+            'Accept-Encoding': 'gzip, deflate, br'
+        }
+        self._debug_print(f"Fetching account assets for {self.user}")
+        response = requests.get(url, headers=headers, cookies=self.cookies)
+        self._debug_print(f"Account assets response: {response.json()}")
+        return response.json()
+
+    def get_account_holdings(self):
+        hex_time = current_epoch_time_as_hex()
+        url = f'https://api.bbaepro.com/api/v2/trade/positions?paged=false&skip=0&take=400&version=1&spac=false&_v=6.6.0&_s={hex_time}'
+        headers = {
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
+            'Tz': '-360',
+            'Tzname': 'America/Chicago',
+            'Accept-Language': 'en',
+            'Accept-Encoding': 'gzip, deflate, br'
+        }
+        self._debug_print(f"Fetching account holdings for {self.user}")
+        response = requests.get(url, headers=headers, cookies=self.cookies)
+        self._debug_print(f"Account holdings response: {response.json()}")
+        return response.json()
+
+    def get_account_info(self):
+        hex_time = current_epoch_time_as_hex()
+        url = f'https://api.bbaepro.com/api/v2/account/info?_v=6.6.0&_s={hex_time}'
+        headers = {
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
+            'Tz': '-360',
+            'Tzname': 'America/Chicago',
+            'Accept-Language': 'en',
+            'Accept-Encoding': 'gzip, deflate, br'
+        }
+        self._debug_print(f"Fetching account info for {self.user}")
+        response = requests.get(url, headers=headers, cookies=self.cookies)
+        self._debug_print(f"Account info response: {response.json()}")
+        return response.json()
+
+    def get_simple_stock_info(self, symbol):
+        hex_time = current_epoch_time_as_hex()
+        url = f'https://api.bbaepro.com/api/v2/market/getSimpleStockInfo?symbols={symbol}&_v=6.6.0&_s={hex_time}'
+        headers = {
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
+            'Tz': '-360',
+            'Tzname': 'America/Chicago',
+            'Accept-Language': 'en',
+            'Accept-Encoding': 'gzip, deflate, br'
+        }
+        self._debug_print(f"Fetching stock info for {symbol}")
+        response = requests.get(url, headers=headers, cookies=self.cookies)
+        self._debug_print(f"Stock info response: {response.json()}")
+        return response.json()
+
+    def validate_buy(self, symbol, amount, order_side, account_number, order_type="MARKET", entrust_price=None):
+        hex_time = current_epoch_time_as_hex()
+        url = f'https://api.bbaepro.com/api/v2/us/trade/validateBuy?_v=6.6.0&_s={hex_time}'
+        headers = {
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
+            'Accept-Language': 'en',
+            'Content-Type': 'application/json; charset=UTF-8',
+        }
+        data = {
+            "allowExtHrsFill": False,
+            "displayAmount": amount,
+            "entrustAmount": amount,
+            "fractions": False,
+            "fractionsType": 0,
+            "isCombinedOption": False,
+            "isOption": False,
+            "orderSide": order_side,
+            "orderSource": 0,
+            "orderTimeInForce": "DAY",
+            "symbol": symbol,
+            "tradeNativeType": 0,
+            "type": order_type,
+            "usAccountId": account_number
+        }
+        # Add entrustPrice to the request if it's a LIMIT order and price is provided
+        if order_type == "LIMIT" and entrust_price is not None:
+            data["entrustPrice"] = entrust_price
+
+        self._debug_print(f"Validating {order_type} buy for {amount} shares of {symbol}")
+        response = requests.post(url, headers=headers, json=data, cookies=self.cookies)
+        self._debug_print(f"Validation response: {response.json()}")
+        return response.json()
+
+    def execute_buy(self, symbol, amount, account_number, dry_run=True, validation_response=None):
+        # Determine the order side (1 for buy, 0 for sell)
+        order_side = 1
+
+        # If no validation response is passed, this function is being called incorrectly by the new logic
+        if validation_response is None:
+            self._debug_print("execute_buy ERROR: validation_response is missing.")
+            return {"Outcome": "Failed", "Message": "execute_buy called without validation_response."}
+        
+        if validation_response['Outcome'] != 'Success':
+            print("Buy validation failed.")
+            return validation_response
+        
+        # Get all data from the successful validation
+        validation_data = validation_response['Data']
+        order_type = validation_data['type']
+        entrust_price = validation_data['entrustPrice']
+
+        if dry_run:
+            total_cost = validation_data['totalWithCommission']
+            entrust_amount = validation_data['entrustAmount']
+            self._debug_print(f"Simulated {order_type} buy: {entrust_amount} shares of {symbol} for a total of ${total_cost}")
+            return validation_response
+
+        # Proceed to actual buy if not a dry run
+        hex_time = current_epoch_time_as_hex()
+        url = f'https://api.bbaepro.com/api/v2/trade/buy?_v=6.6.0&_s={hex_time}'
+        headers = {
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
+            'Accept-Language': 'en',
+            'Content-Type': 'application/json; charset=UTF-8',
+        }
+        data = {
+            "allowExtHrsFill": validation_data['allowExtHrsFill'],
+            "displayAmount": validation_data['displayAmount'],
+            "entrustAmount": validation_data['entrustAmount'],
+            "entrustPrice": entrust_price,
+            "fractions": validation_data['fractions'],
+            "fractionsType": validation_data['fractionsType'],
+            "idempotentId": str(uuid.uuid4()),  # Generates a unique ID for idempotency
+            "isCombinedOption": False,
+            "isOption": False,
+            "orderSide": order_side,
+            "orderSource": 0,
+            "orderTimeInForce": validation_data['orderTimeInForce'],
+            "symbol": symbol,
+            "tradeNativeType": 0,
+            "type": order_type,
+            "usAccountId": account_number
+        }
+        self._debug_print(f"Executing {order_type} buy for {amount} shares of {symbol} at ${data['entrustPrice']}")
+        response = requests.post(url, headers=headers, json=data, cookies=self.cookies)
+        self._debug_print(f"Buy response: {response.json()}")
+        return response.json()
+
+    def check_stock_holdings(self, symbol, account_number):
+        """Check if the stock is currently held and return the available amount."""
+        hex_time = current_epoch_time_as_hex()
+        url = f'https://api.bbaepro.com/api/v2/trade/closeTradeAmount?_v=5.4.1&_s={hex_time}'
+        headers = {
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
+            'Accept-Language': 'en',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Content-Type': 'application/json; charset=UTF-8',
+        }
+        data = {
+            "fractions": False,
+            "fractionsType": 0,
+            "orderSide": 2,  # 2 for checking amount held before selling
+            "symbol": symbol,
+            "usAccountId": account_number
+        }
+        response = requests.post(url, headers=headers, json=data, cookies=self.cookies)
+        return response.json()
+
+    def validate_sell(self, symbol, amount, account_number):
+        """Validate the sell order."""
+        hex_time = current_epoch_time_as_hex()
+        url = f'https://api.bbaepro.com/api/v2/us/trade/validateSell?_v=5.4.1&_s={hex_time}'
+        headers = {
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
+            'Accept-Language': 'en',
+            'Content-Type': 'application/json; charset=UTF-8',
+        }
+        data = {
+            "allowExtHrsFill": False,
+            "displayAmount": str(amount),
+            "entrustAmount": str(amount),
+            "fractions": False,
+            "fractionsType": 0,
+            "isCombinedOption": False,
+            "isOption": False,
+            "orderSide": 2,  # 2 for selling
+            "orderSource": 0,
+            "orderTimeInForce": "DAY",
+            "symbol": symbol,
+            "tradeNativeType": 0,
+            "type": "MARKET",
+            "usAccountId": account_number
+        }
+        response = requests.post(url, headers=headers, json=data, cookies=self.cookies)
+        return response.json()
+
+    def execute_sell(self, symbol, amount, account_number, entrust_price, dry_run=True):
+        """Execute the sell order."""
+        if dry_run:
+            self._debug_print(f"Simulated sell: {amount} shares of {symbol}")
+            return {"Outcome": "Success", "Message": "Dry Run Success"}
+
+        hex_time = current_epoch_time_as_hex()
+        url = f'https://api.bbaepro.com/api/v2/trade/sell?_v=5.4.1&_s={hex_time}'
+        headers = {
+            'User-Agent': 'BBAEPRO Dalvik/2.1.0 (Linux; U; Android 12; SM-S928U1 Build/SE1A.211212.001.B1)',
+            'Accept-Language': 'en',
+            'Content-Type': 'application/json; charset=UTF-8',
+        }
+        data = {
+            "allowExtHrsFill": False,
+            "displayAmount": str(amount),
+            "entrustAmount": str(amount),
+            "entrustPrice": entrust_price,
+            "fractions": False,
+            "fractionsType": 0,
+            "idempotentId": str(uuid.uuid4()),
+            "isCombinedOption": False,
+            "isOption": False,
+            "orderSide": 2,  # 2 for selling
+            "orderSource": 0,
+            "orderTimeInForce": "DAY",
+            "symbol": symbol,
+            "tradeNativeType": 0,
+            "type": "MARKET",
+            "usAccountId": account_number
+        }
+        response = requests.post(url, headers=headers, json=data, cookies=self.cookies)
+        return response.json()
